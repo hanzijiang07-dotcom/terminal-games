@@ -1,9 +1,10 @@
+i
 #!/bin/bash
 
-# ASCII迷宫游戏
-# 使用 WASD 或方向键控制，到达出口即可获胜
+# ASCII Maze Game
+# Use WASD or arrow keys to move. Reach the exit (E) to win.
 
-# 迷宫地图 (# = 墙, . = 路, P = 玩家, E = 出口, * = 宝藏)
+# Maze Map (# = wall, . = path, P = player, E = exit, * = treasure, T = task)
 declare -a maze=(
     "#####################"
     "#P..................#"
@@ -19,7 +20,7 @@ declare -a maze=(
     "#.#.#...*.......#...#"
     "#.#.#.#############.#"
     "#.#...#.............#"
-    "#.#####.#############"
+    "#.#####.#####T#######"
     "#...................E"
     "#####################"
 )
@@ -28,6 +29,7 @@ player_x=1
 player_y=1
 score=0
 moves=0
+task_done=false
 
 original_stty=$(stty -g)
 
@@ -35,9 +37,9 @@ cleanup() {
     stty "$original_stty"
     tput cnorm
     clear
-    echo "游戏结束！"
-    echo "总移动步数: $moves"
-    echo "收集宝藏: $score"
+    echo "Game Over!"
+    echo "Total moves: $moves"
+    echo "Treasures collected: $score"
     exit 0
 }
 
@@ -47,6 +49,8 @@ init_terminal() {
     clear
     tput civis
     stty -echo -icanon time 0 min 0
+    mkdir -p tasks
+    echo "(empty file, go to the task point to edit)" > tasks/task.txt
 }
 
 draw_maze() {
@@ -63,9 +67,9 @@ draw_maze() {
         ((y++))
     done
     echo ""
-    echo "控制: W/↑=上, S/↓=下, A/←=左, D/→=右, Q=退出"
-    echo "目标: 到达出口 (E)"
-    echo "移动步数: $moves  |  宝藏: $score"
+    echo "Controls: W/↑=Up, S/↓=Down, A/←=Left, D/→=Right, Q=Quit"
+    echo "Objective: Reach the exit (E) and complete tasks (*) or (T)"
+    echo "Moves: $moves  |  Treasures: $score"
 }
 
 can_move() {
@@ -73,8 +77,8 @@ can_move() {
     local y=$2
     local row="${maze[$y]}"
     local cell="${row:$x:1}"
-    
-    if [ "$cell" = "." ] || [ "$cell" = "E" ] || [ "$cell" = "*" ]; then
+
+    if [[ "$cell" =~ [\.ET*] ]]; then
         return 0
     fi
     return 1
@@ -83,40 +87,61 @@ can_move() {
 move_player() {
     local new_x=$player_x
     local new_y=$player_y
-    
+
     case $1 in
-        w|W|A) ((new_y--)) ;;
-        s|S|B) ((new_y++)) ;;
-        a|A|D) ((new_x--)) ;;
-        d|D|C) ((new_x++)) ;;
+        w|W) ((new_y--)) ;;
+        s|S) ((new_y++)) ;;
+        a|A) ((new_x--)) ;;
+        d|D) ((new_x++)) ;;
         q|Q) cleanup ;;
         *) return ;;
     esac
-    
+
     if can_move $new_x $new_y; then
         local row="${maze[$new_y]}"
         local cell="${row:$new_x:1}"
-        
+
+        # Exit point
         if [ "$cell" = "E" ]; then
             draw_maze
             tput cup $((${#maze[@]} + 4)) 0
             echo ""
-            echo "🎉 恭喜！你找到了出口！"
-            echo "总移动步数: $moves"
-            echo "收集宝藏: $score"
+            echo "🎉 Congratulations! You reached the exit!"
+            echo "Total moves: $moves"
+            echo "Treasures collected: $score"
             sleep 3
             cleanup
         fi
-        
+
+        # Treasure
         if [ "$cell" = "*" ]; then
             ((score++))
             local new_row="${row:0:$new_x}.${row:$((new_x + 1))}"
             maze[$new_y]="$new_row"
         fi
-        
+
+        # Task point T
+        if [ "$cell" = "T" ] && [ "$task_done" = false ]; then
+            draw_maze
+            echo -e "\n🧩 Task Triggered!"
+            echo "Open 'tasks/task.txt' using vi and write 'Hello Maze'."
+            read -p "Press Enter to open vi..." dummy
+            vi tasks/task.txt
+
+            if grep -q "Hello Maze" tasks/task.txt; then
+                echo "✅ Task Completed! +10 points"
+                score=$((score+10))
+                task_done=true
+            else
+                echo "❌ Incorrect content. Try again."
+            fi
+            sleep 2
+        fi
+
+        # Update old player position
         local old_row="${maze[$player_y]}"
         maze[$player_y]="${old_row:0:$player_x}.${old_row:$((player_x + 1))}"
-        
+
         player_x=$new_x
         player_y=$new_y
         ((moves++))
@@ -126,7 +151,7 @@ move_player() {
 read_key() {
     local key
     read -rsn1 key
-    
+
     if [ "$key" = $'\x1b' ]; then
         read -rsn2 key
         case "$key" in
@@ -142,7 +167,7 @@ read_key() {
 
 main() {
     init_terminal
-    
+
     while true; do
         draw_maze
         read_key
@@ -150,3 +175,4 @@ main() {
 }
 
 main
+
